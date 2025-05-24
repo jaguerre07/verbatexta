@@ -1,0 +1,195 @@
+import nltk
+nltk.download('punkt')
+nltk.download('punkt_tab')
+nltk.download('stopwords')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('averaged_perceptron_tagger_eng')
+from nltk.stem import WordNetLemmatizer
+nltk.download('wordnet')
+nltk.download('omw-1.4')
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.text import Text # Para concordancias
+import string # Para manejar puntuación
+from collections import Counter
+from nltk.corpus import wordnet
+import openai
+from openai import OpenAI
+import os
+
+# Reemplazá esto con tu clave o usá variable de entorno
+client = OpenAI(api_key=openai.api_key)
+
+# Mapear etiquetas POS de NLTK a las etiquetas de WordNet
+def get_wordnet_pos(tag):
+    if tag.startswith('J'):
+        return wordnet.ADJ
+    elif tag.startswith('V'):
+        return wordnet.VERB
+    elif tag.startswith('N'):
+        return wordnet.NOUN
+    elif tag.startswith('R'):
+        return wordnet.ADV
+    else:
+        return wordnet.NOUN  # Por defecto, sustantivo
+
+# --- PASO 1: CARGAR EL ARCHIVO DE TEXTO ---
+file_path = '/Users/juanaguerre/Downloads/purple_land_hudson.txt'
+try:
+    with open(file_path, 'r', encoding='utf-8') as file:
+        raw_text = file.read()
+except FileNotFoundError:
+    print(f"Error: El archivo '{file_path}' no fue encontrado. Verifica la ruta.")
+    exit()
+
+# --- PASO 2: PREPROCESAMIENTO BÁSICO GENERAL ---
+print("\n--- Iniciando Paso 2: Preprocesamiento Básico General ---")
+tokens_originales = word_tokenize(raw_text) # Renombré 'tokens' a 'tokens_originales' para claridad
+tokens_lower = [token.lower() for token in tokens_originales]
+
+
+
+# Definimos tokens_processed aquí, ya que se usará para los conteos de frecuencia
+tokens_no_punct_list = [token for token in tokens_lower if token.isalpha()]
+stop_words_english = set(stopwords.words('english')) # Definir una vez
+tokens_processed = [token for token in tokens_no_punct_list if token not in stop_words_english]
+lemmatizer = WordNetLemmatizer()
+# Primero, hacemos POS tagging sobre tokens_processed
+pos_tags = nltk.pos_tag(tokens_processed)
+# Luego lematizamos con la categoría gramatical correcta
+tokens_lemmatized = [lemmatizer.lemmatize(token, get_wordnet_pos(tag)) for token, tag in pos_tags]
+# Definimos nltk_text aquí, ya que se basa en tokens_lower y se usará para concordancias
+nltk_text = Text(tokens_lemmatized)
+
+print(f"Número de tokens originales: {len(tokens_originales)}")
+print(f"Número de tokens procesados (minúsculas, sin puntuación, sin stop words): {len(tokens_processed)}")
+print("\nPrimeros 20 tokens procesados:")
+print(tokens_processed[:20])
+
+# --- (Opcional) PASO 2.1: CONTEO DE FRECUENCIA DE TODAS LAS PALABRAS PROCESADAS ---
+print("\n--- Iniciando Paso 2.1: Frecuencia de Todas las Palabras ---")
+word_counts = Counter(tokens_lemmatized)
+print("\n--- Frecuencia de Todas las Palabras (Top 20) ---")
+for word, count in word_counts.most_common(20):
+    print(f"{word}: {count}")
+
+# --- PASO 3: GENERACIÓN DE CANDIDATOS DE TÉRMINOS PAISAJÍSTICOS (con POS Tagging) ---
+# (Este era tu Paso 1.5)
+print("\n--- Iniciando Paso 3: Generación de Candidatos con POS Tagging ---")
+tagged_tokens = nltk.pos_tag(tokens_lemmatized) # Usamos tokens_lower para POS tagging
+# print(f"Primeros 10 tokens etiquetados: {tagged_tokens[:10]}") # Puedes descomentar para depurar
+
+pos_tags_of_interest = ['NN', 'NNS', 'NNP', 'NNPS', 'JJ', 'JJR', 'JJS']
+candidate_terms = []
+for word, tag in tagged_tokens:
+    if tag in pos_tags_of_interest:
+        if word.isalpha() and word not in stop_words_english:
+            candidate_terms.append(word)
+
+
+# print(f"Número de términos candidatos (sustantivos/adjetivos filtrados): {len(candidate_terms)}") # Descomentar para depurar
+candidate_counts = Counter(candidate_terms)
+
+print("\n--- Lista de Candidatos a Términos Paisajísticos (Top 50 más frecuentes) ---")
+print("REVISA ESTA LISTA MANUALMENTE para crear/refinar tu lista 'landscape_terms'.")
+for term, count in candidate_counts.most_common(50):
+    print(f"{term}: {count}")
+
+def get_semantic_candidates(top_terms, user_criterion):
+    prompt = f"""
+Estas son las 500 palabras más frecuentes en un texto literario:
+{', '.join(top_terms)}
+
+Según el siguiente criterio: "{user_criterion}", devolveme una lista de palabras que estén relacionadas semánticamente. Solo la lista, en minúscula, separada por comas, sin explicaciones.
+"""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        raw_output = response.choices[0].message.content
+        suggested_terms = [word.strip() for word in raw_output.split(',') if word.strip()]
+        return suggested_terms
+    except Exception as e:
+        print(f"Error al consultar la API de OpenAI: {e}")
+        return []
+
+# --- PASO 3.5: FILTRADO SEMÁNTICO CON IA (opcional) ---
+print("\n" + "="*50)
+print("PASO 3.5: FILTRADO SEMÁNTICO CON IA")
+print("="*50)
+print("Podés ingresar un criterio semántico para preseleccionar términos relevantes (ej: 'paisaje y naturaleza')")
+
+criterion_input = input("Ingresa el criterio de filtrado: ").strip()
+top_terms = [word for word, count in word_counts.most_common(500)]
+
+semantic_suggestions = []
+if criterion_input:
+    print("\nConsultando la IA...")
+    semantic_suggestions = get_semantic_candidates(top_terms, criterion_input)
+    print("\nTérminos sugeridos por la IA según tu criterio:")
+    print(", ".join(semantic_suggestions))
+else:
+    print("No se ingresó criterio, se omite esta etapa.")
+
+# Permitir al usuario tomar esta lista como base o escribir otros
+print("\nPodés ahora escribir términos basados en esa lista o cualquier otro que desees analizar.")
+# --- PASO 4: ENTRADA INTERACTIVA DEL USUARIO PARA SELECCIONAR TÉRMINOS ---
+# (Este era tu Paso 1.6)
+print("\n" + "="*50)
+print("PASO 4: SELECCIÓN INTERACTIVA DE TÉRMINOS")
+print("="*50)
+print("Por favor, revisa la lista de 'Candidatos a Términos Paisajísticos' impresa arriba.")
+print("Escribe los términos de esa lista (o cualquier otro que desees analizar) que consideres relevantes.")
+input_prompt = "Ingresa los términos separados por comas (ej: pampa, monte, land, sky): "
+user_input_string = input(input_prompt)
+
+landscape_terms_from_user_input = []
+if user_input_string.strip():
+    raw_terms = user_input_string.split(',')
+    for term in raw_terms:
+        cleaned_term = term.strip().lower()
+        if cleaned_term:
+            landscape_terms_from_user_input.append(cleaned_term)
+
+if not landscape_terms_from_user_input:
+    print("No se ingresaron términos. El análisis de términos específicos se omitirá o usará una lista vacía.")
+    landscape_terms = [] # Esta es la variable que se usará a continuación
+else:
+    landscape_terms = landscape_terms_from_user_input # Esta es la variable que se usará a continuación
+landscape_terms = [lemmatizer.lemmatize(term, wordnet.NOUN) for term in landscape_terms]
+print(f"\nSe analizarán los siguientes términos seleccionados: {landscape_terms}")
+print("="*50 + "\n")
+
+# --- PASO 5: CONTEO DE FRECUENCIA DE TÉRMINOS PAISAJÍSTICOS SELECCIONADOS ---
+# (Este era parte de tu antiguo Paso 4)
+# ¡¡NO PONGAS 'landscape_terms = []' AQUÍ!!
+print("\n--- Iniciando Paso 5: Análisis de Frecuencia de Términos Seleccionados ---")
+landscape_term_counts = Counter()
+for token in tokens_lemmatized: # Usa los tokens_processed definidos en Paso 2
+    if token in landscape_terms: # Usa la lista landscape_terms del input del usuario
+        landscape_term_counts[token] += 1
+
+print("\n--- Frecuencia de Términos Paisajísticos Seleccionados por el Usuario ---")
+if landscape_term_counts:
+    for term, count in landscape_term_counts.most_common():
+        print(f"{term}: {count}")
+else:
+    if landscape_terms:
+        print("Ninguno de los términos paisajísticos seleccionados fue encontrado en el texto procesado.")
+    else:
+        print("No se seleccionaron términos para analizar su frecuencia específica.")
+
+# --- PASO 6: ANÁLISIS DE CONCORDANCIAS DE TÉRMINOS SELECCIONADOS ---
+# (Este era tu antiguo Paso 5)
+print("\n--- Iniciando Paso 6: Análisis de Concordancias de Términos Seleccionados ---")
+if landscape_terms:
+    for term in landscape_terms: # Usa la lista landscape_terms del input del usuario
+        if term in nltk_text.tokens: # nltk_text fue definido en Paso 2
+            print(f"\nConcordancias para '{term}':")
+            nltk_text.concordance(term, width=80, lines=10)
+        else:
+            print(f"\nEl término '{term}' (seleccionado por el usuario) no se encontró en el texto original (tokens_lower) para concordancia.")
+else:
+    print("No se seleccionaron términos para mostrar concordancias.")
