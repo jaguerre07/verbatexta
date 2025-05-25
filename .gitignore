@@ -1,0 +1,23 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+ENV/
+
+# Archivos de Python compilados
+__pycache__/
+*.pyc
+
+# Archivos de sistema Mac
+.DS_Store
+
+# Archivos de configuración de VSCode
+.vscode/
+
+# Archivos de Jupyter
+.ipynb_checkpoints/
+
+
+# Directorio de modelos preentrenados
+models/
+models/wiki-news-300d-1M.vec
