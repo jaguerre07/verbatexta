@@ -1,6 +1,12 @@
-# Análisis de Paisaje en "The Purple Land" de W.H. Hudson
+# VerbaTexta: Pipeline de Análisis Léxico y Semántico para Cualquier Texto
 
-Este proyecto utiliza un script de Python y técnicas de Procesamiento del Lenguaje Natural (PNL) para analizar la representación del paisaje y la naturaleza en la novela "The Purple Land" de W.H. Hudson, aunque puede ser utilizado en cualquier texto que se le ingrese y con los criterios que el usuario decida. El script identifica términos relevantes, ofrece sugerencias semánticas mediante un modelo Word2Vec entrenado localmente, y permite al usuario seleccionar interactivamente los términos para un análisis final de frecuencia y concordancias.
+Este proyecto pone a disposición un script de Python que, usando técnicas de Procesamiento de Lenguaje Natural (PLN) y embeddings de palabras, permite:
+- Tokenizar y limpiar cualquier texto plano.
+- Eliminar stopwords y lematizar tokens basados en POS tagging.
+- Generar listas de términos candidatos mediante POS tagging.
+- Sugerir términos semánticamente relacionados usando un modelo preentrenado (FastText).
+- Permitir una selección manual de términos y luego calcular su frecuencia y concordancias.
+
 
 ## Funcionalidades Principales
 
@@ -103,6 +109,130 @@ El script realiza los siguientes pasos principales:
 * **Archivo de Texto:** Cambia la variable `file_path`.
 * **Palabras Semilla:** Modifica la lista `default_seed_words_nature` en el script o proporciona tu propia lista interactivamente.
 * **Parámetros de Word2Vec y Umbral de Similitud:** Ajusta estos valores directamente en la sección del "Paso 3.5" para refinar los resultados del filtrado semántico.
+
+---
+
+_Este README fue generado el 24 de mayo de 2025._
+# VerbaTexta Word-Embeddings Pipeline
+
+Este proyecto es una **herramienta de línea de comandos** en Python para:
+
+1. **Tokenización y limpieza** del texto fuente  
+2. **Eliminación de stopwords** (inglés)  
+3. **Lematización** guiada por POS-tagging (NLTK + WordNet)  
+4. **Generación de candidatos léxicos** mediante POS-tagging (sustantivos y adjetivos frecuentes)  
+5. **Filtrado semántico offline** con **FastText preentrenado**  
+6. **Selección manual** de términos finales y  
+7. **Conteo de frecuencia** + **concordancias** contextualizadas  
+
+---
+
+## 📂 Estructura
+
+```
+verbatexta/
+├── verbatexta_wordembeddings         # Script principal (Python)
+├── models/
+│   └── wiki-news-300d-1M.vec         # FastText preentrenado
+└── README.md                         # Este archivo
+```
+
+---
+
+## ⚙️ Requisitos
+
+- **Python 3.8+**  
+- Espacio en disco: **~1 GB** para el `.vec` de FastText  
+- Red: sólo para la descarga original de FastText; el análisis es **offline**.
+
+### Librerías Python
+
+Instalá las dependencias:
+
+```bash
+pip install nltk gensim matplotlib
+```
+
+### Recursos de NLTK
+
+Abrí un intérprete Python una vez y ejecutá:
+
+```python
+import nltk
+
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('wordnet')
+nltk.download('omw-1.4')
+```
+
+(Después podés comentar o quitar las líneas `nltk.download` del script.)
+
+---
+
+## 📥 Descargar FastText preentrenado
+
+1. Descargá **wiki-news-300d-1M.vec.zip** desde  
+   https://fasttext.cc/docs/en/english-vectors.html  
+2. Muévelo a la carpeta `models/` de tu proyecto y descomprimilo:  
+   ```bash
+   mkdir -p ~/Desktop/verbatexta/models
+   mv ~/Downloads/wiki-news-300d-1M.vec.zip ~/Desktop/verbatexta/models/
+   cd ~/Desktop/verbatexta/models
+   unzip wiki-news-300d-1M.vec.zip
+   ```
+3. Verificá que exista  
+   `~/Desktop/verbatexta/models/wiki-news-300d-1M.vec`
+
+---
+
+## 🚀 Cómo ejecutar
+
+Desde la raíz del proyecto:
+
+```bash
+python verbatexta_wordembeddings
+```
+
+El script recorrerá estos pasos:
+
+1.  **Carga** del archivo de texto (`raw_text`) en `file_path`.  
+2.  **Tokenización** en palabras y oraciones.  
+3.  **Lowercasing** y filtrado de tokens alfabéticos.  
+4.  **Stopwords**: eliminación según NLTK.  
+5.  **Lematización**:  
+   - POS-tagging sobre los tokens limpios  
+   - Lematización con `WordNetLemmatizer` y categorías de WordNet  
+6.  **Conteo de frecuencia** de todos los lemas (Top 20 por pantalla).  
+7.  **POS-candidates**: impresión de los 50 términos más frecuentes etiquetados como sustantivos o adjetivos (forma original, no lematizada).  
+8.  **Paso 3.5 – Filtrado semántico**:  
+   - Carga del modelo FastText  
+   - Definición de una lista de **semillas** por defecto (`tree, river, mountain…`) o personalizadas  
+   - Cálculo de similitud cosine entre cada término candidato (Top 200) y las semillas  
+   - Selección de términos cuya similitud máxima supere un **umbral** (por defecto 0.75)  
+   - Impresión de un **único diagnóstico** (Top 20 términos + estadísticas: mínima, máxima, promedio)  
+   - Impresión de la **lista final** de sugerencias semánticas  
+9.  **Selección manual**: el usuario puede tomar esas sugerencias o escribir cualquier otra lista de términos.  
+10. **Lematización** de la lista manual y **conteo de frecuencia** sobre el texto lematizado.  
+11. **Concordancias** (10 líneas de contexto) de cada término seleccionado, sobre el texto lematizado (`nltk_text`).
+
+---
+
+## 🔧 Personalización
+
+- **Ruta de texto**: cambia `file_path` al camino de tu propio `.txt`.  
+- **Ruta FastText**: modifica `fasttext_path` para apuntar a tu archivo `.vec`.  
+- **Semillas y umbral**: puedes ajustar la lista `default_seed_words_nature` y el valor `similarity_threshold` en pantalla.  
+- **Pool de candidatos**: en lugar de Top 200, cambia el parámetro de `most_common(200)` según tu corpus.
+
+---
+
+## 📖 Lecturas recomendadas
+
+- Bojanowski et al. (2017). *Enriching Word Vectors with Subword Information* (FastText)  
+- Mikolov et al. (2013). *Efficient Estimation of Word Representations in Vector Space* (Word2Vec)  
+- Bird, Klein & Loper (2009). *Natural Language Processing with Python* (NLTK)
 
 ---
 
