@@ -15,7 +15,8 @@ from nltk.text import Text # Para concordancias
 import string # Para manejar puntuación
 from collections import Counter
 from nltk.corpus import wordnet
-from gensim.models import Word2Vec # Importar Word2Vec
+from gensim.models import KeyedVectors  # Importar carga de FastText preentrenado
+
 # import os # Si fueras a usar variables de entorno para claves API
 
 # --- Función para mapear etiquetas POS de NLTK a WordNet ---
@@ -47,6 +48,12 @@ tokens_lower = [token.lower() for token in tokens_originales]
 
 tokens_no_punct_list = [token for token in tokens_lower if token.isalpha()]
 stop_words_english = set(stopwords.words('english'))
+print("\n--- DIAGNÓSTICO DE STOPWORDS ---")
+print(f"Número de stopwords en NLTK (inglés): {len(stop_words_english)}")
+if 'the' in stop_words_english and 'a' in stop_words_english and 'is' in stop_words_english:
+    print("Diagnóstico: Stopwords comunes como 'the', 'a', 'is' SÍ están en la lista de NLTK.")
+else:
+    print("Diagnóstico ADVERTENCIA: Stopwords comunes como 'the', 'a', 'is' NO están en la lista. Problema con stopwords.")
 tokens_processed = [token for token in tokens_no_punct_list if token not in stop_words_english] # Usado para POS Tagging en Paso 3
 
 lemmatizer = WordNetLemmatizer()
@@ -96,93 +103,116 @@ print("\n" + "="*50)
 print("PASO 3.5: FILTRADO SEMÁNTICO LOCAL CON WORD EMBEDDINGS (GENSIM)")
 print("="*50)
 
-print("Preparando datos para el modelo Word2Vec...")
-raw_sentences = sent_tokenize(raw_text.lower())
-word2vec_corpus = [word_tokenize(sentence) for sentence in raw_sentences]
-word2vec_corpus_cleaned = []
-for sentence_tokens in word2vec_corpus:
-    cleaned_sentence = [token for token in sentence_tokens if token.isalpha()]
-    if cleaned_sentence:
-        word2vec_corpus_cleaned.append(cleaned_sentence)
-
-semantic_suggestions = [] # Inicializar por si el corpus está vacío
-if not word2vec_corpus_cleaned:
-    print("Error: El corpus para Word2Vec está vacío después de la limpieza. Se omite el filtrado semántico con Word2Vec.")
-else:
-    vector_dim = 100
-    window_size = 5
-    min_word_count = 3
-    workers_count = 4
-    sg_param = 0
-    print(f"Entrenando modelo Word2Vec (vector_size={vector_dim}, window={window_size}, min_count={min_word_count}, sg={sg_param})...")
-    word2vec_model = Word2Vec(sentences=word2vec_corpus_cleaned,
-                              vector_size=vector_dim, window=window_size,
-                              min_count=min_word_count, workers=workers_count, sg=sg_param)
-    print("Modelo Word2Vec entrenado.")
-      # 3. Definir/Ingresar palabras semilla para "paisaje y naturaleza"
-    default_seed_words_nature = [
+# --- CARGAR MODELO FASTTEXT PREENTRENADO ---
+fasttext_path = '/Users/juanaguerre/Desktop/verbatexta/models/wiki-news-300d-1M.vec'  # Actualiza con la ruta real
+print(f"Cargando FastText preentrenado desde {fasttext_path}...")
+w2v_model = KeyedVectors.load_word2vec_format(fasttext_path, binary=False)
+print("Modelo FastText cargado.")
+# 3. Definir/Ingresar palabras semilla para "paisaje y naturaleza"
+default_seed_words_nature = [
         'tree', 'river', 'mountain', 'forest', 'pampa', 'sky', 'water', 'plain',
         'grass', 'stone', 'wind', 'flower', 'sea', 'hill', 'valley', 'sun',
         'moon', 'stars', 'animal', 'bird', 'wood', 'field', 'soil', 'plant',
         'nature', 'landscape', 'ground', 'earth'
     ]
-    print("\nPalabras semilla por defecto para 'paisaje/naturaleza':")
-    print(", ".join(default_seed_words_nature))
+print("\nPalabras semilla por defecto para 'paisaje/naturaleza':")
+print(", ".join(default_seed_words_nature))
 
-    use_default_seeds_prompt = input("¿Usar esta lista de semillas por defecto? (s/n, 's' por defecto): ").strip().lower()
+use_default_seeds_prompt = input("¿Usar esta lista de semillas por defecto? (s/n, 's' por defecto): ").strip().lower()
 
-    seed_words_nature_final = []
-    if use_default_seeds_prompt == 'n':
-        print("\nIngresa tus propias palabras semilla para 'paisaje/naturaleza', separadas por comas.")
-        user_seed_input_string = input("Tus palabras semilla: ").strip()
-        if user_seed_input_string:
-            raw_seed_terms = user_seed_input_string.split(',')
-            for term in raw_seed_terms:
-                cleaned_term = term.strip().lower()
-                if cleaned_term:
-                    seed_words_nature_final.append(cleaned_term)
-        if not seed_words_nature_final: # Si el usuario ingresó 'n' pero no dio palabras
-            print("No se ingresaron palabras semilla personalizadas. Usando la lista por defecto.")
-            seed_words_nature_final = default_seed_words_nature
-    else: # Si el usuario presiona Enter o escribe 's' (o cualquier cosa que no sea 'n')
+seed_words_nature_final = []
+if use_default_seeds_prompt == 'n':
+    print("\nIngresa tus propias palabras semilla para 'paisaje/naturaleza', separadas por comas.")
+    user_seed_input_string = input("Tus palabras semilla: ").strip()
+    if user_seed_input_string:
+        raw_seed_terms = user_seed_input_string.split(',')
+        for term in raw_seed_terms:
+            cleaned_term = term.strip().lower()
+            if cleaned_term:
+                seed_words_nature_final.append(cleaned_term)
+    if not seed_words_nature_final: # Si el usuario ingresó 'n' pero no dio palabras
+        print("No se ingresaron palabras semilla personalizadas. Usando la lista por defecto.")
         seed_words_nature_final = default_seed_words_nature
+else: # Si el usuario presiona Enter o escribe 's' (o cualquier cosa que no sea 'n')
+    seed_words_nature_final = default_seed_words_nature
 
-    print(f"Se usarán las siguientes palabras semilla para el análisis de similitud: {seed_words_nature_final}")
+print(f"Se usarán las siguientes palabras semilla para el análisis de similitud: {seed_words_nature_final}")
 
-    # Filtrar seed_words_nature_final para que solo contengan palabras que están en el vocabulario del modelo
-    valid_seed_words = [word for word in seed_words_nature_final if word in word2vec_model.wv]
+# Filtrar seed_words_nature_final para que solo contengan palabras que están en el vocabulario del modelo FastText
+valid_seed_words = [word for word in seed_words_nature_final if word in w2v_model]
 
-    if not valid_seed_words:
-        print("Advertencia: Ninguna de las palabras semilla seleccionadas se encuentra en el vocabulario del modelo Word2Vec.")
-        semantic_suggestions = []
-    else:
-        print(f"Palabras semilla válidas en el modelo para 'paisaje/naturaleza': {valid_seed_words}")
-        temp_counter_for_candidates = Counter()
-        for sentence in word2vec_corpus_cleaned: # Usar el mismo corpus con el que se entrenó WV
-            temp_counter_for_candidates.update(sentence)
-        candidate_terms_for_wv = [word for word, count in temp_counter_for_candidates.most_common(500)]
-        similarity_threshold = 0.55 # Experimenta con este valor
-        print(f"\nFiltrando ~{len(candidate_terms_for_wv)} términos (formas originales) con umbral > {similarity_threshold}...")
-        for term in candidate_terms_for_wv:
-            if term in word2vec_model.wv:
-                try:
-                    max_similarity = 0.0
-                    for seed in valid_seed_words:
-                        sim = word2vec_model.wv.similarity(term, seed)
-                        if sim > max_similarity:
-                            max_similarity = sim
-                    if max_similarity > similarity_threshold:
-                        if term not in valid_seed_words:
-                            semantic_suggestions.append(term)
-                except KeyError:
-                    pass
-        semantic_suggestions = sorted(list(dict.fromkeys(semantic_suggestions)))
-
-print("\nTérminos sugeridos por Word2Vec local (similitud con palabras semilla):")
-if semantic_suggestions:
-    print(", ".join(semantic_suggestions))
+if not valid_seed_words:
+    print("Advertencia: Ninguna de las palabras semilla seleccionadas se encuentra en el vocabulario del modelo FastText.")
+    print("El filtrado semántico basado en similitud no producirá resultados.")
+    # semantic_suggestions ya fue inicializada como [] al principio del Paso 3.5
 else:
-    print("No se encontraron sugerencias semánticas con los parámetros actuales (o no había palabras semilla válidas).")
+    print(f"Palabras semilla válidas en el modelo para 'paisaje/naturaleza': {valid_seed_words}")
+
+    # 4. Tomar los términos candidatos para filtrar.
+    # NOTA: Necesitas definir word2vec_corpus_cleaned antes de este bloque si no está definido.
+    # Aquí se asume que word2vec_corpus_cleaned es una lista de listas de tokens (frases tokenizadas).
+    # Si no tienes esta variable, deberás crearla a partir de tu corpus.
+    # Por ejemplo:
+    # word2vec_corpus_cleaned = [word_tokenize(sent.lower()) for sent in sent_tokenize(raw_text)]
+    
+    raw_sentences = sent_tokenize(raw_text.lower())
+    word2vec_corpus = [word_tokenize(sentence) for sentence in raw_sentences]
+    word2vec_corpus_cleaned = []
+    for sentence_tokens in word2vec_corpus:
+        cleaned_sentence = [token for token in sentence_tokens if token.isalpha()]
+        if cleaned_sentence:
+            word2vec_corpus_cleaned.append(cleaned_sentence)
+
+    
+    temp_counter_for_candidates = Counter()
+    for sentence in word2vec_corpus_cleaned:
+        temp_counter_for_candidates.update(sentence)
+    most_frequent_unlemmatized = temp_counter_for_candidates.most_common(200)
+            
+    candidate_terms_for_wv = [
+        word for word, count in most_frequent_unlemmatized
+        if word not in stop_words_english
+    ]
+    print(f"Número de términos frecuentes (después de quitar stopwords) para el análisis de similitud FastText: {len(candidate_terms_for_wv)}")
+    
+    similarity_threshold = 0.75 # Experimenta con este valor
+    print(f"\nFiltrando ~{len(candidate_terms_for_wv)} términos con umbral > {similarity_threshold}...")
+    similarities_calculated = {}
+    semantic_suggestions = [] 
+    for term in candidate_terms_for_wv:
+        if term in w2v_model:
+            try:
+                max_similarity = 0.0
+                for seed in valid_seed_words:
+                    sim = w2v_model.similarity(term, seed)
+                    if sim > max_similarity:
+                        max_similarity = sim
+                similarities_calculated[term] = max_similarity
+                if max_similarity > similarity_threshold:
+                    if term not in valid_seed_words:
+                        semantic_suggestions.append(term)
+            except KeyError:
+                pass
+
+    # Consolidar y ordenar sugerencias únicas
+    semantic_suggestions = sorted(dict.fromkeys(semantic_suggestions))
+
+    # Mostrar diagnóstico una sola vez
+    if similarities_calculated:
+        sorted_similarities = sorted(similarities_calculated.items(), key=lambda item: item[1], reverse=True)
+        print("\n--- DIAGNÓSTICO: Resumen de Similitudes Calculadas ---")
+        print("Top 20 términos más similares (término: similitud):")
+        for t, s_score in sorted_similarities[:20]:
+            print(f"  {t}: {s_score:.4f}")
+        scores = list(similarities_calculated.values())
+        print(f"\nEstadísticas de similitud: mínima {min(scores):.4f}, máxima {max(scores):.4f}, promedio {sum(scores)/len(scores):.4f}")
+    else:
+        print("No se calcularon similitudes para ningún término candidato.")
+
+    if semantic_suggestions:
+        print(", ".join(semantic_suggestions))
+    else:
+        print("No se encontraron sugerencias semánticas con los parámetros actuales (o no había palabras semilla válidas).")
 
 # --- PASO 4: ENTRADA INTERACTIVA DEL USUARIO PARA SELECCIONAR TÉRMINOS ---
 print("\n" + "="*50)
