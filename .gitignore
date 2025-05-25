@@ -3,6 +3,7 @@
 venv/
 env/
 ENV/
+mi_entorno_py311/
 
 # Archivos de Python compilados
 __pycache__/
