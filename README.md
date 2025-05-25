@@ -13,9 +13,9 @@ Este proyecto pone a disposición un script de Python que, usando técnicas de P
 * Carga y preprocesa el texto de la novela.
 * Realiza lematización asistida por etiquetado gramatical (POS tagging).
 * Genera una lista de términos candidatos (sustantivos y adjetivos frecuentes) mediante POS tagging.
-* Entrena un modelo Word2Vec localmente sobre el texto de la novela.
-* Utiliza el modelo Word2Vec y un conjunto de palabras "semilla" (definibles por el usuario) para sugerir términos semánticamente relacionados con un concepto (ej. "paisaje y naturaleza").
-* Permite al usuario ingresar interactivamente una lista final de términos a analizar, basándose en las sugerencias del POS tagging y Word2Vec.
+* Carga un modelo FastText preentrenado para usar embeddings de palabras sin necesidad de entrenamiento local.
+* Utiliza el modelo FastText y un conjunto de palabras "semilla" (definibles por el usuario) para sugerir términos semánticamente relacionados con un concepto (ej. "paisaje y naturaleza").
+* Permite al usuario ingresar interactivamente una lista final de términos a analizar, basándose en las sugerencias del POS tagging y FastText.
 * Calcula la frecuencia de los términos seleccionados por el usuario.
 * Muestra concordancias (KWIC - Keyword in Context) para los términos seleccionados.
 
